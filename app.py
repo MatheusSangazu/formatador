@@ -3,31 +3,18 @@ import pandas as pd
 import re
 from io import BytesIO
 import math
+# --- NOVOS IMPORTS PARA O COMPRESSOR ---
 import subprocess
 import os
 import tempfile
 
+# Configuração da página (Mantida)
+st.set_page_config(page_title="Canivete Suíço BotConversa", layout="wide")
 
-st.set_page_config(page_title="Canivete Suíço ForjaCorp", layout="wide", page_icon="🛠️")
+st.title("🤖 Canivete Suíço - BotConversa")
 
-st.title("🛠️ Canivete Suíço - ForjaCorp")
-
-
-tab1, tab2, tab3 = st.tabs(["🚀 Formatar Contatos", "🧹 Limpar Etiquetas", "🗜️ Compressor PDF"])
-
-# ==============================================================================
-# FUNÇÕES GERAIS
-# ==============================================================================
-def to_excel(df):
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False)
-    return output.getvalue()
-
+# --- FUNÇÃO AUXILIAR DO COMPRESSOR (Adicionada no topo para organização) ---
 def compress_pdf(input_file, power):
-    """
-    Função para comprimir PDF usando Ghostscript
-    """
     quality = {
         0: "/default",
         1: "/prepress",
@@ -36,7 +23,7 @@ def compress_pdf(input_file, power):
         4: "/screen"
     }
     
-    # Salva arquivo temporário
+    # Cria arquivo temporário para entrada
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_input:
         tmp_input.write(input_file.read())
         input_path = tmp_input.name
@@ -57,121 +44,145 @@ def compress_pdf(input_file, power):
         with open(output_path, "rb") as f:
             compressed_data = f.read()
         
-        # Limpa arquivos temporários
+        # Limpeza dos arquivos temporários
         if os.path.exists(input_path): os.remove(input_path)
         if os.path.exists(output_path): os.remove(output_path)
         return compressed_data
     except Exception as e:
         st.error(f"Erro na compressão: {e}")
-        # Tenta limpar mesmo com erro
         if os.path.exists(input_path): os.remove(input_path)
         return None
 
+
+# ATUALIZADO: Agora são 3 abas
+tab1, tab2, tab3 = st.tabs(["🚀 Formatar e Criar Grupos", "🧹 Limpar Etiquetas Existentes", "🗜️ Compressor PDF"])
+
+
 # ==============================================================================
-# ABA 1: FORMATADOR E ORGANIZADOR
+# ABA 1: FORMATADOR (SEU CÓDIGO ORIGINAL - INTACTO)
 # ==============================================================================
 with tab1:
-    st.markdown("### 🚀 Preparar planilhas para o BotConversa")
+    st.markdown("### Prepare planilhas novas para subir no BotConversa")
     
-    col_config, col_main = st.columns([1, 3])
-
-    with col_config:
-        st.info("⚙️ **Configurações**")
-        
-        # 1. Ordenação
-        criterio_ordenacao = st.selectbox(
-            "Ordenar por:", 
-            ["Original (Como veio)", "Primeiro nome", "Telefone"]
+    # --- BARRA LATERAL (CONFIGURAÇÕES ABA 1) ---
+    st.sidebar.header("🏷️ Configuração (Importação)")
+    
+    # 1. Ordenação
+    st.sidebar.subheader("🔃 Ordenação")
+    criterio_ordenacao = st.sidebar.selectbox(
+        "Ordenar planilha por:", 
+        ["Original (Como veio)", "Primeiro nome", "Telefone"]
+    )
+    if criterio_ordenacao != "Original (Como veio)":
+        direcao_ordenacao = st.sidebar.radio(
+            "Sentido da ordem:", 
+            ["Crescente (A-Z ou 0-9)", "Decrescente (Z-A ou 9-0)"]
         )
-        direcao_ordenacao = "Crescente"
-        if criterio_ordenacao != "Original (Como veio)":
-            direcao_ordenacao = st.radio("Ordem:", ["Crescente (A-Z)", "Decrescente (Z-A)"])
+    
+    # 2. Configurações de Telefone (DDD Padrão) - NOVO
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📞 Telefone")
+    ddd_padrao = st.sidebar.text_input(
+        "DDD Padrão (para números sem DDD)", 
+        placeholder="Ex: 62",
+        max_chars=2,
+        help="Se o número tiver apenas 8 ou 9 dígitos, usaremos este DDD."
+    )
+    
+    # 3. Etiquetas Fixas
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🏷️ Etiquetas")
+    etiquetas_fixas = st.sidebar.text_input(
+        "Etiquetas Fixas (para todos)", 
+        placeholder="Ex: Importacao, Cliente Novo"
+    )
+
+    # 4. Configuração de Grupos
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📦 Divisão em Lotes")
+    ativar_grupos = st.sidebar.checkbox("Dividir contatos em grupos?", value=False)
+    
+    tamanho_grupo = 100
+    prefixo_grupo = "grupo"
+
+    if ativar_grupos:
+        tamanho_grupo = st.sidebar.number_input("Pessoas por grupo", min_value=1, value=100)
+        prefixo_grupo = st.sidebar.text_input("Nome do grupo", value="grupo")
+        st.sidebar.info(f"Isso vai gerar: {prefixo_grupo}1, {prefixo_grupo}2...")
+
+    # --- LÓGICA DE FORMATAÇÃO (V6) ---
+    def formatar_telefone(tel):
+        if pd.isna(tel): return ""
+        nums = re.sub(r'\D', '', str(tel))
         
-        st.divider()
-
-        # 2. Telefone
-        ddd_padrao = st.text_input("DDD Padrão (se faltar)", placeholder="Ex: 62", max_chars=2)
+        # Remove zero à esquerda
+        if nums.startswith('0'): nums = nums[1:]
         
-        st.divider()
+        # --- CASO 1: NÚMERO SEM DDD (8 ou 9 dígitos) ---
+        # Se o usuário definiu um DDD Padrão, usa ele aqui.
+        if len(nums) in [8, 9] and ddd_padrao:
+            nums = ddd_padrao + nums # Agora tem DDD (10 ou 11) e cai na regra abaixo do 55
+            
+        # --- CASO 2: CORREÇÃO DE DDD DUPLICADO ---
+        # Se tem 12 ou 13 dígitos E NÃO começa com 55 (Ex: 626299...)
+        if len(nums) >= 12 and not nums.startswith('55'):
+            if nums[0:2] == nums[2:4]:
+                nums = nums[2:] 
+            elif len(nums) == 13: 
+                nums = nums[2:]
 
-        # 3. Etiquetas
-        etiquetas_fixas = st.text_input("Etiquetas Fixas", placeholder="Ex: Importacao, Frio")
+        # --- CASO 3: REGRA FINAL DO 55 ---
+        if len(nums) in [10, 11]:
+            nums = '55' + nums
+            
+        return nums
 
-        st.divider()
-
-        # 4. Grupos
-        ativar_grupos = st.checkbox("Dividir em Grupos?", value=False)
-        tamanho_grupo = 100
-        prefixo_grupo = "grupo"
-        if ativar_grupos:
-            tamanho_grupo = st.number_input("Qtd por grupo", min_value=1, value=100)
-            prefixo_grupo = st.text_input("Nome do grupo", value="grupo")
-
-    with col_main:
+    def separar_nomes(row):
+        nome_full = str(row['Nome']).strip() if 'Nome' in row and not pd.isna(row['Nome']) else ""
+        sobre_orig = str(row['Sobrenome']).strip() if 'Sobrenome' in row and not pd.isna(row['Sobrenome']) else ""
         
-        def formatar_telefone(tel):
-            if pd.isna(tel): return ""
-            nums = re.sub(r'\D', '', str(tel))
-            if nums.startswith('0'): nums = nums[1:]
-            
-            # Caso 1: Sem DDD (8 ou 9 digitos)
-            if len(nums) in [8, 9] and ddd_padrao:
-                nums = ddd_padrao + nums 
-            
-            # Caso 2: Correção de DDD duplicado 
-            if len(nums) >= 12 and not nums.startswith('55'):
-                if nums[0:2] == nums[2:4]: # Ex: 6262...
-                    nums = nums[2:] 
-                elif len(nums) == 13: 
-                    nums = nums[2:]
+        if not sobre_orig:
+            partes = nome_full.split(maxsplit=1)
+            p_nome = partes[0] if len(partes) > 0 else ""
+            s_nome = partes[1] if len(partes) > 1 else ""
+        else:
+            p_nome = nome_full
+            s_nome = sobre_orig
+        return pd.Series([p_nome, s_nome])
 
-            # Caso 3: Adicionar 55
-            if len(nums) in [10, 11]:
-                nums = '55' + nums
-                
-            return nums
+    # --- UPLOAD ABA 1 ---
+    uploaded_file_tab1 = st.file_uploader("Escolha o arquivo para IMPORTAÇÃO (XLSX ou CSV)", type=['xlsx', 'csv'], key="up1")
 
-        def separar_nomes(row):
-            nome_full = str(row['Nome']).strip() if 'Nome' in row and not pd.isna(row['Nome']) else ""
-            sobre_orig = str(row['Sobrenome']).strip() if 'Sobrenome' in row and not pd.isna(row['Sobrenome']) else ""
-            
-            if not sobre_orig:
-                partes = nome_full.split(maxsplit=1)
-                p_nome = partes[0] if len(partes) > 0 else ""
-                s_nome = partes[1] if len(partes) > 1 else ""
+    if uploaded_file_tab1 is not None:
+        try:
+            if uploaded_file_tab1.name.endswith('.csv'):
+                df = pd.read_csv(uploaded_file_tab1)
             else:
-                p_nome = nome_full
-                s_nome = sobre_orig
-            return pd.Series([p_nome, s_nome])
+                df = pd.read_excel(uploaded_file_tab1)
 
-        uploaded_file_tab1 = st.file_uploader("📂 Solte sua planilha aqui (XLSX ou CSV)", type=['xlsx', 'csv'], key="up1")
+            st.success(f"Arquivo carregado! {len(df)} contatos encontrados.")
 
-        if uploaded_file_tab1 is not None:
-            try:
-                if uploaded_file_tab1.name.endswith('.csv'):
-                    df = pd.read_csv(uploaded_file_tab1)
-                else:
-                    df = pd.read_excel(uploaded_file_tab1)
-
+            with st.spinner('Processando e Ordenando...'):
                 if 'Nome' not in df.columns and 'Primeiro nome' not in df.columns:
-                     st.error("❌ Erro: A planilha precisa ter uma coluna chamada 'Nome'.")
+                     st.error("A planilha precisa ter uma coluna 'Nome'.")
                 else:
-                    
                     if 'Primeiro nome' not in df.columns:
                         df[['Primeiro nome', 'Sobrenome']] = df.apply(separar_nomes, axis=1)
                     
-                    col_tel = next((c for c in df.columns if 'tel' in c.lower() or 'cel' in c.lower() or 'whatsapp' in c.lower()), None)
+                    col_tel = next((c for c in df.columns if 'tel' in c.lower() or 'cel' in c.lower()), None)
                     
                     if col_tel:
+                        # Aplica a formatação passando pela lógica do DDD Padrão
                         df['Telefone'] = df[col_tel].apply(formatar_telefone)
                         
-                        # Ordenar
+                        # Ordenação
                         if criterio_ordenacao != "Original (Como veio)":
                             eh_crescente = True if "Crescente" in direcao_ordenacao else False
-                            col_ordem = "Primeiro nome" if criterio_ordenacao == "Primeiro nome" else "Telefone"
-                            df = df.sort_values(by=col_ordem, ascending=eh_crescente).reset_index(drop=True)
+                            if criterio_ordenacao in df.columns:
+                                df = df.sort_values(by=criterio_ordenacao, ascending=eh_crescente)
+                                df = df.reset_index(drop=True)
                         
-                        # Criar Etiquetas e Grupos
+                        # Etiquetas
                         lista_etiquetas = []
                         for index in range(len(df)):
                             tags = []
@@ -182,38 +193,46 @@ with tab1:
                             lista_etiquetas.append(",".join(tags))
                         
                         df['Etiquetas'] = lista_etiquetas
-                        
-                        # Selecionar colunas finais
-                        df_final = df[['Primeiro nome', 'Sobrenome', 'Telefone', 'Etiquetas']].copy()
+                        df_inicial = df[['Primeiro nome', 'Sobrenome', 'Telefone', 'Etiquetas']].copy()
 
-                        st.success(f"✅ Processado! {len(df_final)} contatos.")
+                        st.divider()
+                        st.subheader("Edição e Conferência")
                         
-                        # Editor
-                        df_editado = st.data_editor(df_final, num_rows="dynamic", use_container_width=True, key="editor_v7")
+                        df_editado = st.data_editor(
+                            df_inicial, 
+                            num_rows="dynamic", 
+                            use_container_width=True,
+                            key="editor_importacao"
+                        )
                         
-                        # Botão Download
-                        excel_data = to_excel(df_editado)
+                        if ativar_grupos:
+                            qtd_grupos = math.ceil(len(df_editado) / tamanho_grupo)
+                            st.caption(f"📊 Total: {len(df_editado)} | Grupos gerados: {qtd_grupos}")
+
+                        buffer = BytesIO()
+                        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                            df_editado.to_excel(writer, index=False)
+                        
                         st.download_button(
-                            label="⬇️ Baixar Planilha Pronta",
-                            data=excel_data,
-                            file_name="importacao_botconversa_v7.xlsx",
+                            label="⬇️ Baixar Tabela Pronta",
+                            data=buffer.getvalue(),
+                            file_name="importacao_botconversa_v6.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             type="primary"
                         )
                     else:
-                        st.error("Não encontrei coluna de Telefone/Celular/Whatsapp.")
+                        st.error("Não encontrei uma coluna de Telefone/Celular.")
+        except Exception as e:
+            st.error(f"Erro ao processar: {e}")
 
-            except Exception as e:
-                st.error(f"Erro ao ler arquivo: {e}")
 
 # ==============================================================================
-# ABA 2: LIMPADOR DE ETIQUETAS
+# ABA 2: LIMPADOR (SEU CÓDIGO ORIGINAL - INTACTO)
 # ==============================================================================
 with tab2:
-    st.markdown("### 🧹 Limpar etiquetas de base exportada")
-    st.caption("Suba o arquivo exportado do BotConversa para remover tags antigas.")
-
-    uploaded_file_tab2 = st.file_uploader("Arquivo do BotConversa (XLSX/CSV)", type=['xlsx', 'csv'], key="up2")
+    st.markdown("### Limpar etiquetas de uma base exportada")
+    
+    uploaded_file_tab2 = st.file_uploader("Escolha o arquivo do BOTCONVERSA (XLSX ou CSV)", type=['xlsx', 'csv'], key="up2")
 
     if uploaded_file_tab2 is not None:
         try:
@@ -225,52 +244,77 @@ with tab2:
             col_tags = next((c for c in df_clean.columns if 'etiqueta' in c.lower() or 'tags' in c.lower()), None)
 
             if col_tags:
-                # Identificar todas as tags únicas
-                todas_tags = df_clean[col_tags].astype(str).str.split(',').explode().str.strip().unique()
-                todas_tags = [t for t in todas_tags if t and t != 'nan']
+                st.info(f"Coluna de etiquetas identificada: **{col_tags}**")
                 
-                tags_para_remover = st.multiselect("Selecione as etiquetas para REMOVER:", sorted(todas_tags))
+                todas_tags = df_clean[col_tags].astype(str).str.split(',').explode().str.strip().unique()
+                todas_tags = [t for t in todas_tags if t != 'nan' and t != ''] 
+                todas_tags.sort()
+
+                tags_para_remover = st.multiselect(
+                    "❌ Selecione quais etiquetas REMOVER:",
+                    options=todas_tags
+                )
 
                 if tags_para_remover:
                     def limpar_tags(valor_celula):
                         if pd.isna(valor_celula): return ""
-                        atuais = [t.strip() for t in str(valor_celula).split(',')]
-                        novas = [t for t in atuais if t not in tags_para_remover and t != '']
-                        return ",".join(novas)
+                        tags_atuais = [t.strip() for t in str(valor_celula).split(',')]
+                        tags_finais = [t for t in tags_atuais if t not in tags_para_remover and t != '']
+                        return ",".join(tags_finais)
 
-                    if st.button("🗑️ Aplicar Limpeza"):
-                        df_clean[col_tags] = df_clean[col_tags].apply(limpar_tags)
-                        
-                        st.success("Limpeza concluída!")
-                        st.dataframe(df_clean.head())
-                        
-                        excel_clean = to_excel(df_clean)
-                        st.download_button(
-                            label="⬇️ Baixar Base Limpa",
-                            data=excel_clean,
-                            file_name="base_limpa.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
+                    df_clean['Etiquetas'] = df_clean[col_tags].apply(limpar_tags)
+                else:
+                    if 'Etiquetas' not in df_clean.columns:
+                        df_clean['Etiquetas'] = df_clean[col_tags]
+
+                cols_para_mostrar = [c for c in df_clean.columns if c != col_tags] 
+                if 'Etiquetas' not in cols_para_mostrar: cols_para_mostrar.append('Etiquetas')
+                
+                st.divider()
+                st.markdown("### Revise e Edite o resultado:")
+                
+                df_clean_editado = st.data_editor(
+                    df_clean[cols_para_mostrar], 
+                    num_rows="dynamic",
+                    use_container_width=True,
+                    key="editor_limpeza"
+                )
+                    
+                buffer_clean = BytesIO()
+                with pd.ExcelWriter(buffer_clean, engine='openpyxl') as writer:
+                    df_clean_editado.to_excel(writer, index=False)
+                
+                st.download_button(
+                    label="⬇️ Baixar Planilha Limpa",
+                    data=buffer_clean.getvalue(),
+                    file_name="base_atualizada_sem_etiquetas.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary"
+                )
+
             else:
-                st.warning("Não encontrei coluna de Etiquetas.")
+                st.error("Não encontrei uma coluna chamada 'Etiquetas' ou 'Tags'.")
+
         except Exception as e:
-            st.error(f"Erro: {e}")
+            st.error(f"Erro ao processar: {e}")
 
 # ==============================================================================
-# ABA 3: COMPRESSOR DE PDF 
+# ABA 3: COMPRESSOR DE PDF (NOVA FUNCIONALIDADE)
 # ==============================================================================
 with tab3:
-    st.markdown("### 🗜️ Compressor de PDF")
+    st.header("🗜️ Compressor de PDF")
     st.markdown("Reduza o tamanho de arquivos PDF pesados usando o motor **Ghostscript**.")
 
     uploaded_pdf = st.file_uploader("Solte seu PDF pesadão aqui", type=['pdf'])
 
     if uploaded_pdf is not None:
+        # Mostra tamanho original
         original_size = uploaded_pdf.size / 1024 / 1024 # MB
         st.write(f"📁 Tamanho Original: **{original_size:.2f} MB**")
 
         st.divider()
         
+        # Seletor de Nível
         nivel = st.select_slider(
             "Escolha o nível de compressão:",
             options=["Extrema (Email)", "Média (Ebook)", "Alta Qualidade (Impressão)"],
@@ -278,9 +322,9 @@ with tab3:
         )
 
         mapa_nivel = {
-            "Extrema (Email)": 4,   
-            "Média (Ebook)": 3,     
-            "Alta Qualidade (Impressão)": 2 
+            "Extrema (Email)": 4,   # /screen
+            "Média (Ebook)": 3,     # /ebook
+            "Alta Qualidade (Impressão)": 2 # /printer
         }
 
         if st.button("🔥 Comprimir PDF", type="primary"):
