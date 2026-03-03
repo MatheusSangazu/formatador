@@ -7,6 +7,8 @@ import math
 import subprocess
 import os
 import tempfile
+# --- IMPORT PARA O DOWNLOADER ---
+import yt_dlp
 
 # Configuração da página (Mantida)
 st.set_page_config(page_title="Canivete Suíço BotConversa", layout="wide")
@@ -54,8 +56,8 @@ def compress_pdf(input_file, power):
         return None
 
 
-# ATUALIZADO: Agora são 3 abas
-tab1, tab2, tab3 = st.tabs(["🚀 Formatar e Criar Grupos", "🧹 Limpar Etiquetas Existentes", "🗜️ Compressor PDF"])
+# ATUALIZADO: Agora são 4 abas
+tab1, tab2, tab3, tab4 = st.tabs(["🚀 Formatar e Criar Grupos", "🧹 Limpar Etiquetas Existentes", "🗜️ Compressor PDF", "📥 Downloader (Beta)"])
 
 
 # ==============================================================================
@@ -349,3 +351,155 @@ with tab3:
                     mime="application/pdf",
                     type="primary"
                 )
+
+
+# ==============================================================================
+# ABA 4: DOWNLOADER DE MÍDIA (NOVA FUNCIONALIDADE - BETA)
+# ==============================================================================
+with tab4:
+    st.header("📥 Downloader de Mídia (Beta)")
+    st.markdown("Baixe vídeos e áudios do **YouTube** e **Instagram**.")
+    st.caption("⚠️ Use apenas para conteúdo que você tem permissão para baixar.")
+
+    # Aviso de Beta
+    st.info("🧪 Esta funcionalidade está em fase Beta. Pode apresentar instabilidades ou não funcionar com alguns links.")
+
+    st.divider()
+
+    # Input da URL
+    url_input = st.text_input("Cole o link do vídeo/áudio:", placeholder="https://www.youtube.com/watch?v=... ou https://www.instagram.com/p/...")
+
+    if url_input:
+        # Detectar plataforma
+        plataforma = "Desconhecida"
+        if "youtube.com" in url_input or "youtu.be" in url_input:
+            plataforma = "YouTube"
+        elif "instagram.com" in url_input:
+            plataforma = "Instagram"
+
+        st.info(f"Plataforma detectada: **{plataforma}**")
+
+        # Opções de download
+        col1, col2 = st.columns(2)
+
+        with col1:
+            tipo_download = st.radio(
+                "O que deseja baixar?",
+                ["Vídeo", "Áudio apenas"],
+                horizontal=True
+            )
+
+        with col2:
+            if tipo_download == "Vídeo":
+                qualidade_video = st.selectbox(
+                    "Qualidade do vídeo:",
+                    ["Melhor disponível", "1080p", "720p", "480p"]
+                )
+            else:
+                formato_audio = st.selectbox(
+                    "Formato do áudio:",
+                    ["MP3", "M4A"]
+                )
+
+        st.divider()
+
+        # Botão de download
+        if st.button("🎬 Baixar Mídia", type="primary"):
+            with st.spinner("Preparando download..."):
+                try:
+                    # Configurações do yt-dlp
+                    ydl_opts = {
+                        'quiet': True,
+                        'no_warnings': True,
+                    }
+
+                    if tipo_download == "Áudio apenas":
+                        ydl_opts['format'] = 'bestaudio/best'
+                        ydl_opts['postprocessors'] = [{
+                            'key': 'FFmpegExtractAudio',
+                            'preferredcodec': formato_audio.lower(),
+                            'preferredquality': '192',
+                        }]
+                        ydl_opts['outtmpl'] = '%(title)s.%(ext)s'
+                    else:
+                        # Configuração de vídeo
+                        if qualidade_video == "Melhor disponível":
+                            ydl_opts['format'] = 'best'
+                        elif qualidade_video == "1080p":
+                            ydl_opts['format'] = 'bestvideo[height<=1080]+bestaudio/best'
+                        elif qualidade_video == "720p":
+                            ydl_opts['format'] = 'bestvideo[height<=720]+bestaudio/best'
+                        else:
+                            ydl_opts['format'] = 'bestvideo[height<=480]+bestaudio/best'
+
+                        ydl_opts['outtmpl'] = '%(title)s.%(ext)s'
+                        ydl_opts['merge_output_format'] = 'mp4'
+
+                    # Obter informações primeiro
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        info = ydl.extract_info(url_input, download=False)
+                        titulo = info.get('title', 'Video')
+                        duracao = info.get('duration', 0)
+                        thumb = info.get('thumbnail', '')
+
+                        # Converter duração para formato legível
+                        minutos = duracao // 60
+                        segundos = duracao % 60
+                        duracao_str = f"{minutos}:{segundos:02d}"
+
+                    # Exibir informações do vídeo
+                    st.success("Informações do vídeo:")
+                    col_info1, col_info2 = st.columns(2)
+                    col_info1.write(f"📌 Título: {titulo}")
+                    col_info2.write(f"⏱️ Duração: {duracao_str}")
+
+                    if thumb:
+                        st.image(thumb, width=300, caption="Thumbnail")
+
+                    # Fazer o download em arquivo temporário
+                    temp_dir = tempfile.mkdtemp()
+                    temp_file = os.path.join(temp_dir, 'downloaded_file')
+
+                    with st.spinner("Baixando mídia..."):
+                        with yt_dlp.YoutubeDL({**ydl_opts, 'outtmpl': temp_dir + '/%(title)s.%(ext)s'}) as ydl:
+                            ydl.download([url_input])
+
+                        # Encontrar o arquivo baixado
+                        downloaded_files = []
+                        for root, dirs, files in os.walk(temp_dir):
+                            for file in files:
+                                downloaded_files.append(os.path.join(root, file))
+
+                        if downloaded_files:
+                            arquivo_final = downloaded_files[0]
+                            nome_arquivo = os.path.basename(arquivo_final)
+                            tamanho_arquivo = os.path.getsize(arquivo_final) / (1024 * 1024) # MB
+
+                            with open(arquivo_final, 'rb') as f:
+                                arquivo_bytes = f.read()
+
+                            # Limpar arquivos temporários
+                            import shutil
+                            shutil.rmtree(temp_dir)
+
+                            st.success(f"Download concluído! Tamanho: {tamanho_arquivo:.2f} MB")
+
+                            # Determinar MIME type
+                            if tipo_download == "Áudio apenas":
+                                mime_type = "audio/mpeg" if formato_audio == "MP3" else "audio/mp4"
+                            else:
+                                mime_type = "video/mp4"
+
+                            st.download_button(
+                                label="⬇️ Baixar Arquivo",
+                                data=arquivo_bytes,
+                                file_name=nome_arquivo,
+                                mime=mime_type,
+                                type="primary"
+                            )
+                        else:
+                            st.error("Erro ao localizar arquivo baixado.")
+
+                except Exception as e:
+                    st.error(f"Erro ao baixar mídia: {str(e)}")
+                    st.caption("💡 Dica: Verifique se o link está correto e se o vídeo está disponível publicamente.")
