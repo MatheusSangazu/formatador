@@ -3,19 +3,17 @@ import pandas as pd
 import re
 from io import BytesIO
 import math
-# --- NOVOS IMPORTS PARA O COMPRESSOR ---
 import subprocess
 import os
 import tempfile
-# --- IMPORT PARA O DOWNLOADER ---
 import yt_dlp
 
-# Configuração da página (Mantida)
+
 st.set_page_config(page_title="Canivete Suíço BotConversa", layout="wide")
 
 st.title("🤖 Canivete Suíço - BotConversa")
 
-# --- FUNÇÃO AUXILIAR DO COMPRESSOR (Adicionada no topo para organização) ---
+
 def compress_pdf(input_file, power):
     quality = {
         0: "/default",
@@ -56,12 +54,12 @@ def compress_pdf(input_file, power):
         return None
 
 
-# ATUALIZADO: Agora são 4 abas
+
 tab1, tab2, tab3, tab4 = st.tabs(["🚀 Formatar e Criar Grupos", "🧹 Limpar Etiquetas Existentes", "🗜️ Compressor PDF", "📥 Downloader (Beta)"])
 
 
 # ==============================================================================
-# ABA 1: FORMATADOR (SEU CÓDIGO ORIGINAL - INTACTO)
+# ABA 1: FORMATADOR 
 # ==============================================================================
 with tab1:
     st.markdown("### Prepare planilhas novas para subir no BotConversa")
@@ -229,7 +227,7 @@ with tab1:
 
 
 # ==============================================================================
-# ABA 2: LIMPADOR (SEU CÓDIGO ORIGINAL - INTACTO)
+# ABA 2: LIMPADOR 
 # ==============================================================================
 with tab2:
     st.markdown("### Limpar etiquetas de uma base exportada")
@@ -301,7 +299,7 @@ with tab2:
             st.error(f"Erro ao processar: {e}")
 
 # ==============================================================================
-# ABA 3: COMPRESSOR DE PDF (NOVA FUNCIONALIDADE)
+# ABA 3: COMPRESSOR DE PDF 
 # ==============================================================================
 with tab3:
     st.header("🗜️ Compressor de PDF")
@@ -366,13 +364,9 @@ with tab4:
 
     st.divider()
 
-    # Opção de cookies para YouTube
-    usar_cookies = st.checkbox("🍪 Usar cookies do navegador (para YouTube com erro de autenticação)", value=False)
-    
-    if usar_cookies:
-        st.caption("Isso usará os cookies do seu navegador para baixar vídeos do YouTube que exigem login.")
-        st.caption("Funciona melhor no Chrome, Firefox, Edge e Brave.")
-    
+    # Aviso sobre YouTube
+    st.warning("⚠️ **YouTube:** Se aparecer erro de autenticação, tente abrir o vídeo no navegador primeiro e aguarde alguns segundos.")
+
     st.divider()
 
     # Input da URL
@@ -412,6 +406,16 @@ with tab4:
 
         st.divider()
 
+        # Opção de cookies (avançado)
+        with st.expander("🔐 Opções Avançadas (Cookies)"):
+            st.caption("Use esta opção se estiver tendo problemas com autenticação ou Cloudflare.")
+            st.caption("💡 Para criar um arquivo cookies.txt, use a extensão 'Get cookies.txt LOCALLY' no Chrome ou 'cookies.txt' no Firefox.")
+            arquivo_cookies = st.file_uploader(
+                "Arquivo cookies.txt (opcional)",
+                type=["txt"],
+                help="Carregue um arquivo de cookies exportado do seu navegador para contornar autenticação."
+            )
+
         # Botão de download
         if st.button("🎬 Baixar Mídia", type="primary"):
             with st.spinner("Preparando download..."):
@@ -420,11 +424,16 @@ with tab4:
                     ydl_opts = {
                         'quiet': True,
                         'no_warnings': True,
+                        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                     }
 
-                    # Adicionar cookies se solicitado (apenas para YouTube)
-                    if usar_cookies and plataforma == "YouTube":
-                        ydl_opts['cookiesfrombrowser'] = ('chrome',)
+                    # Adicionar cookies se foi carregado
+                    if arquivo_cookies:
+                        temp_cookies = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
+                        temp_cookies.write(arquivo_cookies.read().decode('utf-8'))
+                        temp_cookies.close()
+                        ydl_opts['cookiefile'] = temp_cookies.name
+                        st.info("🔐 Usando arquivo de cookies fornecido")
 
                     if tipo_download == "Áudio apenas":
                         ydl_opts['format'] = 'bestaudio/best'
@@ -433,12 +442,16 @@ with tab4:
                             'preferredcodec': formato_audio.lower(),
                             'preferredquality': '192',
                         }]
-                        ydl_opts['outtmpl'] = '%(title)s.%(ext)s'
+                        if plataforma == "Instagram":
+                            ydl_opts['outtmpl'] = 'audio.%(ext)s'
+                        else:
+                            ydl_opts['outtmpl'] = '%(title)s.%(ext)s'
                     else:
                         # Configuração de vídeo
                         if plataforma == "Instagram":
                             # Para Instagram, usar formato mais simples
                             ydl_opts['format'] = 'best'
+                            ydl_opts['outtmpl'] = 'video.%(ext)s'
                         else:
                             # Para YouTube
                             if qualidade_video == "Melhor disponível":
@@ -450,8 +463,7 @@ with tab4:
                             else:
                                 ydl_opts['format'] = 'bestvideo[height<=480]+bestaudio/best'
 
-                        ydl_opts['outtmpl'] = '%(title)s.%(ext)s'
-                        if plataforma != "Instagram":
+                            ydl_opts['outtmpl'] = '%(title)s.%(ext)s'
                             ydl_opts['merge_output_format'] = 'mp4'
 
                     # Obter informações primeiro
@@ -480,7 +492,14 @@ with tab4:
                     temp_file = os.path.join(temp_dir, 'downloaded_file')
 
                     with st.spinner("Baixando mídia..."):
-                        with yt_dlp.YoutubeDL({**ydl_opts, 'outtmpl': temp_dir + '/%(title)s.%(ext)s'}) as ydl:
+                        # Configuração específica para o template de arquivo
+                        download_opts = ydl_opts.copy()
+                        if plataforma == "Instagram":
+                            download_opts['outtmpl'] = temp_dir + '/instagram_video.%(ext)s'
+                        else:
+                            download_opts['outtmpl'] = temp_dir + '/%(title)s.%(ext)s'
+                        
+                        with yt_dlp.YoutubeDL(download_opts) as ydl:
                             ydl.download([url_input])
 
                         # Encontrar o arquivo baixado
@@ -500,6 +519,13 @@ with tab4:
                             # Limpar arquivos temporários
                             import shutil
                             shutil.rmtree(temp_dir)
+                            
+                            # Limpar arquivo de cookies temporário se foi usado
+                            if arquivo_cookies and 'cookiefile' in ydl_opts:
+                                try:
+                                    os.unlink(ydl_opts['cookiefile'])
+                                except:
+                                    pass
 
                             st.success(f"Download concluído! Tamanho: {tamanho_arquivo:.2f} MB")
 
@@ -523,23 +549,34 @@ with tab4:
                     error_msg = str(e)
                     st.error(f"Erro ao baixar mídia: {error_msg}")
                     
+                    # Limpar arquivo de cookies temporário se foi usado
+                    if arquivo_cookies and 'cookiefile' in ydl_opts:
+                        try:
+                            os.unlink(ydl_opts['cookiefile'])
+                        except:
+                            pass
+                    
                     # Dicas específicas baseadas no erro
                     if "Sign in to confirm you" in error_msg or "cookies" in error_msg.lower():
                         st.warning("🔒 O YouTube está pedindo autenticação.")
                         st.markdown("""
                         **Soluções:**
-                        1. Marque a opção **"Usar cookies do navegador"** acima e tente novamente
-                        2. Abra o vídeo no seu navegador, resolva o captcha se necessário, e tente de novo
+                        1. Abra o vídeo no seu navegador, resolva o captcha se necessário, e tente de novo
+                        2. Aguarde alguns segundos e tente novamente
                         3. Para conteúdo privado, você precisa estar logado na mesma conta
+                        4. Tente baixar apenas o áudio (pode funcionar melhor)
+                        5. Use a opção "Opções Avançadas (Cookies)" e carregue um arquivo cookies.txt
                         """)
                     elif "HTTP Error 429" in error_msg:
                         st.warning("⏱️ Muitas requisições. Aguarde alguns minutos antes de tentar novamente.")
                     elif "Unknown format code" in error_msg or "not available" in error_msg.lower():
                         st.warning("📹 Formato não disponível. Tente baixar com qualidade diferente.")
+                        st.caption("💡 Para Instagram, tente baixar apenas o áudio ou vídeo sem especificar qualidade.")
                     elif "private" in error_msg.lower() or "unavailable" in error_msg.lower():
                         st.warning("🔒 Conteúdo privado ou indisponível. Verifique se você tem permissão para acessá-lo.")
                     elif "instagram" in error_msg.lower():
                         st.warning("📱 Erro no Instagram. Isso pode acontecer com contas privadas ou links expirados.")
                         st.caption("💡 Tente abrir o link no navegador para verificar se está disponível.")
+                        st.caption("💡 Para Instagram, tente baixar apenas o áudio.")
                     else:
                         st.caption("💡 Dica: Verifique se o link está correto e se o vídeo está disponível publicamente.")

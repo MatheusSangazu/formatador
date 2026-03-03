@@ -39,6 +39,10 @@ Uma ferramenta completa desenvolvida para preparar, limpar e organizar listas de
   - Áudio: MP3 ou M4A
 - **Preview Antes do Download:** Veja título, duração e thumbnail antes de baixar.
 - **Detecção Automática:** Identifica automaticamente a plataforma do link.
+- **Opções Avançadas:**
+  - **Cookies:** Upload de arquivo cookies.txt para contornar autenticação e Cloudflare.
+  - **User-Agent:** User-Agent realista configurado automaticamente para evitar bloqueios.
+- **Soluções de Erros:** Mensagens informativas e dicas específicas para cada tipo de erro.
 - ⚠️ **Nota:** Use apenas para conteúdo que você tem permissão para baixar.
 
 ---
@@ -108,6 +112,7 @@ formatador/
 ├── requirements.txt     # Dependências Python
 ├── Dockerfile          # Configuração do container Docker
 ├── docker-compose.yml  # Orquestração Docker Compose
+├── documentação.md     # Documentação oficial da biblioteca yt-dlp
 ├── .gitignore         # Arquivos ignorados pelo Git
 └── README.md          # Este arquivo
 ```
@@ -119,6 +124,11 @@ formatador/
 - **Downloader (Beta):** Esta funcionalidade está em fase Beta. Pode apresentar instabilidades ou não funcionar com alguns links.
 - **Uso Responsável:** O downloader deve ser utilizado apenas para conteúdo que você tem permissão para baixar.
 - **FFmpeg Local:** Para usar o downloader localmente (fora do Docker), é necessário instalar o FFmpeg separadamente.
+- **Cookies do Navegador:** Para criar um arquivo cookies.txt, use a extensão "Get cookies.txt LOCALLY" no Chrome ou "cookies.txt" no Firefox. Isso ajuda a contornar problemas de autenticação e Cloudflare.
+- **Erros de Autenticação:** Se encontrar erros como "Sign in to confirm you're not a bot", tente:
+  1. Abrir o vídeo no navegador e resolver o captcha
+  2. Usar a opção "Opções Avançadas (Cookies)" com um arquivo cookies.txt
+  3. Baixar apenas o áudio (funciona melhor em alguns casos)
 
 ---
 
