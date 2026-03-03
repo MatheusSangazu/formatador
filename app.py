@@ -366,6 +366,15 @@ with tab4:
 
     st.divider()
 
+    # Opção de cookies para YouTube
+    usar_cookies = st.checkbox("🍪 Usar cookies do navegador (para YouTube com erro de autenticação)", value=False)
+    
+    if usar_cookies:
+        st.caption("Isso usará os cookies do seu navegador para baixar vídeos do YouTube que exigem login.")
+        st.caption("Funciona melhor no Chrome, Firefox, Edge e Brave.")
+    
+    st.divider()
+
     # Input da URL
     url_input = st.text_input("Cole o link do vídeo/áudio:", placeholder="https://www.youtube.com/watch?v=... ou https://www.instagram.com/p/...")
 
@@ -413,6 +422,10 @@ with tab4:
                         'no_warnings': True,
                     }
 
+                    # Adicionar cookies se solicitado (apenas para YouTube)
+                    if usar_cookies and plataforma == "YouTube":
+                        ydl_opts['cookiesfrombrowser'] = ('chrome',)
+
                     if tipo_download == "Áudio apenas":
                         ydl_opts['format'] = 'bestaudio/best'
                         ydl_opts['postprocessors'] = [{
@@ -423,17 +436,23 @@ with tab4:
                         ydl_opts['outtmpl'] = '%(title)s.%(ext)s'
                     else:
                         # Configuração de vídeo
-                        if qualidade_video == "Melhor disponível":
+                        if plataforma == "Instagram":
+                            # Para Instagram, usar formato mais simples
                             ydl_opts['format'] = 'best'
-                        elif qualidade_video == "1080p":
-                            ydl_opts['format'] = 'bestvideo[height<=1080]+bestaudio/best'
-                        elif qualidade_video == "720p":
-                            ydl_opts['format'] = 'bestvideo[height<=720]+bestaudio/best'
                         else:
-                            ydl_opts['format'] = 'bestvideo[height<=480]+bestaudio/best'
+                            # Para YouTube
+                            if qualidade_video == "Melhor disponível":
+                                ydl_opts['format'] = 'best'
+                            elif qualidade_video == "1080p":
+                                ydl_opts['format'] = 'bestvideo[height<=1080]+bestaudio/best'
+                            elif qualidade_video == "720p":
+                                ydl_opts['format'] = 'bestvideo[height<=720]+bestaudio/best'
+                            else:
+                                ydl_opts['format'] = 'bestvideo[height<=480]+bestaudio/best'
 
                         ydl_opts['outtmpl'] = '%(title)s.%(ext)s'
-                        ydl_opts['merge_output_format'] = 'mp4'
+                        if plataforma != "Instagram":
+                            ydl_opts['merge_output_format'] = 'mp4'
 
                     # Obter informações primeiro
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -501,5 +520,26 @@ with tab4:
                             st.error("Erro ao localizar arquivo baixado.")
 
                 except Exception as e:
-                    st.error(f"Erro ao baixar mídia: {str(e)}")
-                    st.caption("💡 Dica: Verifique se o link está correto e se o vídeo está disponível publicamente.")
+                    error_msg = str(e)
+                    st.error(f"Erro ao baixar mídia: {error_msg}")
+                    
+                    # Dicas específicas baseadas no erro
+                    if "Sign in to confirm you" in error_msg or "cookies" in error_msg.lower():
+                        st.warning("🔒 O YouTube está pedindo autenticação.")
+                        st.markdown("""
+                        **Soluções:**
+                        1. Marque a opção **"Usar cookies do navegador"** acima e tente novamente
+                        2. Abra o vídeo no seu navegador, resolva o captcha se necessário, e tente de novo
+                        3. Para conteúdo privado, você precisa estar logado na mesma conta
+                        """)
+                    elif "HTTP Error 429" in error_msg:
+                        st.warning("⏱️ Muitas requisições. Aguarde alguns minutos antes de tentar novamente.")
+                    elif "Unknown format code" in error_msg or "not available" in error_msg.lower():
+                        st.warning("📹 Formato não disponível. Tente baixar com qualidade diferente.")
+                    elif "private" in error_msg.lower() or "unavailable" in error_msg.lower():
+                        st.warning("🔒 Conteúdo privado ou indisponível. Verifique se você tem permissão para acessá-lo.")
+                    elif "instagram" in error_msg.lower():
+                        st.warning("📱 Erro no Instagram. Isso pode acontecer com contas privadas ou links expirados.")
+                        st.caption("💡 Tente abrir o link no navegador para verificar se está disponível.")
+                    else:
+                        st.caption("💡 Dica: Verifique se o link está correto e se o vídeo está disponível publicamente.")
